@@ -1,0 +1,5 @@
+from binance.client import Client
+import time
+
+API_KEY = 'EzcN2gIOcBrfRonU9n0nL5K5R4NXtfVltddog38KRifW3iVXKddR2hEG1CZnaJsa'
+API_SECRET = 'HcFFXvxAE0EyMyyR1tqfMbUwwx0DUSIbHO5A9DxQ9eQjIqb3RBGiowBErEEQCxrB'
