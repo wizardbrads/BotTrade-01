@@ -1,5 +1,108 @@
-from binance.client import Client
-import time
+//+------------------------------------------------------------------+
+//| Expert Advisor: Scalping EA with Trailing Stop & Risk Management|
+//| Strategy: EMA (50) + RSI (14) + Fixed TP/SL                     |
+//+------------------------------------------------------------------+
 
-API_KEY = 'EzcN2gIOcBrfRonU9n0nL5K5R4NXtfVltddog38KRifW3iVXKddR2hEG1CZnaJsa'
-API_SECRET = 'HcFFXvxAE0EyMyyR1tqfMbUwwx0DUSIbHO5A9DxQ9eQjIqb3RBGiowBErEEQCxrB'
+// ตั้งค่าพื้นฐาน
+input double RiskPerTrade = 2.0;    // % ของ Balance ที่จะเสี่ยงต่อการเทรด
+input int TakeProfit = 30;          // TP (pips)
+input int StopLoss = 100;           // SL (pips)
+input int TrailingStop = 20;        // Trailing Stop (pips)
+input int MagicNumber = 123456;     // ใช้แยกออเดอร์ EA ออกจากมือ
+input int Slippage = 3;             // ค่าสลิปเพจ
+
+// อินดิเคเตอร์ที่ใช้
+input int EmaPeriod = 50;           // ค่า EMA
+input int RsiPeriod = 14;           // ค่า RSI
+input int RsiOverbought = 70;       // ระดับ Overbought
+input int RsiOversold = 30;         // ระดับ Oversold
+
+// คำนวณขนาด Lot ตามความเสี่ยงที่กำหนด
+double CalculateLotSize()
+{
+    double accountRisk = AccountBalance() * (RiskPerTrade / 100);
+    double tickValue = MarketInfo(Symbol(), MODE_TICKVALUE);
+    double lotSize = accountRisk / (StopLoss * tickValue);
+    return NormalizeDouble(lotSize, 2);
+}
+
+// ฟังก์ชันหลักของ EA
+void OnTick()
+{
+    double ema = iMA(Symbol(), PERIOD_M5, EmaPeriod, 0, MODE_EMA, PRICE_CLOSE, 0);
+    double rsi = iRSI(Symbol(), PERIOD_M5, RsiPeriod, PRICE_CLOSE, 0);
+    double price = Bid;
+
+    // ตรวจสอบว่ามีออเดอร์ที่ยังเปิดอยู่หรือไม่
+    if (OrdersTotal() == 0)
+    {
+        double lotSize = CalculateLotSize(); // คำนวณ Lot Size ตาม Risk
+
+        // **เงื่อนไข Buy**
+        if (rsi < RsiOversold && price > ema)
+        {
+            OpenOrder(OP_BUY, lotSize);
+        }
+
+        // **เงื่อนไข Sell**
+        if (rsi > RsiOverbought && price < ema)
+        {
+            OpenOrder(OP_SELL, lotSize);
+        }
+    }
+
+    // จัดการ Trailing Stop
+    ManageTrailingStop();
+}
+
+// ฟังก์ชันเปิดออเดอร์
+void OpenOrder(int type, double lotSize)
+{
+    double sl, tp;
+    if (type == OP_BUY)
+    {
+        sl = Bid - StopLoss * Point;
+        tp = Bid + TakeProfit * Point;
+    }
+    else if (type == OP_SELL)
+    {
+        sl = Ask + StopLoss * Point;
+        tp = Ask - TakeProfit * Point;
+    }
+
+    OrderSend(Symbol(), type, lotSize, 
+              (type == OP_BUY ? Ask : Bid), 
+              Slippage, sl, tp, 
+              "Scalping EA", MagicNumber, 0, clrNONE);
+}
+
+// ฟังก์ชัน Trailing Stop
+void ManageTrailingStop()
+{
+    for (int i = 0; i < OrdersTotal(); i++)
+    {
+        if (OrderSelect(i, SELECT_BY_POS, MODE_TRADES) &&
+            OrderMagicNumber() == MagicNumber)
+        {
+            double newSL;
+            if (OrderType() == OP_BUY)
+            {
+                newSL = Bid - TrailingStop * Point;
+                if (newSL > OrderStopLoss())
+                {
+                    OrderModify(OrderTicket(), OrderOpenPrice(), newSL,
+                                OrderTakeProfit(), 0, clrNONE);
+                }
+            }
+            else if (OrderType() == OP_SELL)
+            {
+                newSL = Ask + TrailingStop * Point;
+                if (newSL < OrderStopLoss())
+                {
+                    OrderModify(OrderTicket(), OrderOpenPrice(), newSL,
+                                OrderTakeProfit(), 0, clrNONE);
+                }
+            }
+        }
+    }
+}
